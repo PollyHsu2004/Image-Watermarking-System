@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>圖像浮水印處理工具 - Flask Web GUI</title>
+    <style>
+        body { 
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+        margin: 0; 
+        padding: 20px; 
+        
+        /* 1. 背景圖片的路徑 */
+        background-image: url('/static/images/W.jpg');
+        
+        /* 2. 確保背景圖片覆蓋整個視窗 */
+        background-size: cover; 
+        
+        /* 3. 確保背景圖片固定 */
+        background-attachment: fixed; 
+        
+        /* 4. 調整疊加層透明度：0.5 alpha (半透明黑色) */
+        background-color: rgba(0, 0, 0, 0.5); 
+        
+        /* 5. 混合模式保持不變 */
+        background-blend-mode: overlay; 
+        }
+        
+        .container { 
+        max-width: 800px; 
+        margin: 30px auto; 
+        
+        /* 使用 rgba() 設置半透明白色背景 */
+        background: rgba(255, 255, 255, 0.7); /* 提高不透明度，讓文字更清晰 */
+        
+        padding: 30px; 
+        border-radius: 12px; 
+        box-shadow: 0 4px 20px rgba(0,0,0,0.08); 
+        }
+
+        h1 { text-align: center; color: #1a1a1a; margin-bottom: 25px; border-bottom: 2px solid #564038; padding-bottom: 10px; }
+        h2 { color: #333; margin-top: 25px; border-left: 5px solid #564038; padding-left: 10px; }
+        .form-group { margin-bottom: 18px; }
+        label { display: block; font-weight: 600; margin-bottom: 6px; color: #444; }
+        input[type="file"], input[type="text"], select { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; transition: border-color 0.3s; }
+        input[type="file"]:focus, input[type="text"]:focus, select:focus { border-color: #564038; outline: none; }
+        .options-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; }
+        button { background-color: #564038; color: white; padding: 12px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold; width: 100%; transition: background-color 0.3s; margin-top: 20px;}
+        button:hover { background-color: #6F5B52; }
+        
+        /* 訊息樣式 */
+        .flashes { list-style: none; padding: 0; margin: 0 0 20px 0; }
+        .flashes li { padding: 12px; border-radius: 6px; font-weight: 600; }
+        .error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb;}
+
+        /* 新增 CSS 來顯示/隱藏浮水印圖片欄位 */
+        .hidden { display: none; }
+
+        /* 表格和預覽區塊樣式 */
+        #results_table { margin-top: 40px; padding-top: 20px; border-top: 2px dashed #ccc; }
+        #results_table table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        #results_table th, #results_table td {
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: center;
+            font-size: 14px;
+        }
+        #results_table th {
+            background-color: #e9ecef;
+            color: #333;
+            font-weight: 700;
+        }
+        #image_preview {
+            margin-bottom: 25px; 
+            text-align: center; 
+            border: 1px solid #564038; 
+            padding: 10px; 
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.9);
+        }
+        #image_preview img {
+            max-width: 100%; 
+            height: auto; 
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>圖像浮水印添加系統</h1>
+        
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            <ul class="flashes">
+            {% for category, message in messages %}
+              <li class="{{ category }}">{{ message }}</li>
+            {% endfor %}
+            </ul>
+          {% endif %}
+        {% endwith %}
+
+        <form method="POST" enctype="multipart/form-data" action="{{ url_for('index') }}">
+            
+            <h2>輸入圖片與文字</h2>
+            
+            <div class="form-group">
+                <label for="main_image">主圖 (.jpg/.png):</label>
+                <input type="file" id="main_image" name="main_image" accept=".jpg, .jpeg, .png" required>
+            </div>
+            
+            <div id="watermark_image_group" class="form-group">
+                <label for="watermark_image">浮水印圖 (.jpg/.png):</label>
+                <input type="file" id="watermark_image" name="watermark_image" accept=".jpg, .jpeg, .png" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="user_text">浮水印文字 (僅限「文字浮水印」模式使用):</label>
+                <input type="text" id="user_text" name="user_text" placeholder="輸入浮水印文字(不支援中文字符)">
+            </div>
+
+            <h2>浮水印功能選擇</h2>
+            <div class="options-grid">
+                <div class="form-group">
+                    <label for="wm_type">種類:</label>
+                    <select id="wm_type" name="wm_type">
+                        <option value="浮雕去背">透明浮雕</option>
+                        <option value="透明彩色">彩色混合</option>
+                        <option value="文字浮水印">文字浮水印</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="wm_size">大小:</label>
+                    <select id="wm_size" name="wm_size">
+                        <option value="小">小 (約主圖寬度 10%)</option>
+                        <option value="中" selected>中 (約主圖寬度 20%)</option>
+                        <option value="大">大 (約主圖寬度 30%)</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="wm_position">添加位置:</label>
+                    <select id="wm_position" name="wm_position">
+                        <option value="左上角">左上角</option>
+                        <option value="右上角">右上角</option>
+                        <option value="左下角">左下角</option>
+                        <option value="右下角" selected>右下角</option>
+                        <option value="中央">中央</option>
+                    </select>
+                </div>
+            </div>
+            <!-- <div style="text-align: center;"> -->
+                <!-- <button type="submit" style="width: auto; padding: 10px 200px";> RUN</button> -->
+            <!-- </div> -->
+            <button type="submit">
+                RUN
+            </button>
+        </form>
+        
+        
+        {% if image_url or psnr_data %}
+        <section id="results_table">
+            <h2>浮水印強度分析</h2>
+
+            {% if psnr_data %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>參考指標</th>
+                        <th>原圖 vs 浮水印</th>
+                        <th>浮水印 vs 壓縮 QF=40</th>
+                        <th>浮水印 vs 壓縮 QF=30</th>
+                        <th>浮水印 vs 壓縮 QF=20</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>PSNR (dB)</td>
+                        {% for data in psnr_data %}
+                            <td>{{ data }}</td>
+                        {% endfor %}
+                    </tr>
+                    <tr>
+                        <td>SSIM</td>
+                        {% for data in ssim_data %}
+                            <td>{{ data }}</td>
+                        {% endfor %}
+                    </tr>
+                </tbody>
+            </table>
+            {% endif %}
+
+            {% if image_url %}
+                <br><br><div id="image_preview">
+                    <img src="{{ image_url }}" alt="結果預覽">
+                    <p style="font-size: 0.9em; color: #555; margin-top: 5px;">檔名：<strong>{{ results_filename }}</strong></p>
+                </div>
+            {% endif %}
+
+
+            {% if results_filename %}
+                <div style="text-align: center; margin-top: 20px;">
+                    <a href="{{ url_for('download_file', filename=results_filename) }}" download>
+                        <button type="button" style="width: auto; padding: 10px 30px;">
+                            下載圖片
+                        </button>
+                    </a>
+                </div>
+            {% endif %}
+        </section>
+        {% endif %}
+        
+    </div>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const wmTypeSelect = document.getElementById('wm_type');
+            const wmImageGroup = document.getElementById('watermark_image_group');
+            const wmImageInput = document.getElementById('watermark_image');
+
+            function toggleWatermarkImageInput() {
+                if (wmTypeSelect.value === '文字浮水印') {
+                    // 選擇文字浮水印時，隱藏圖片輸入欄位，並移除必填屬性
+                    wmImageGroup.classList.add('hidden');
+                    wmImageInput.removeAttribute('required');
+                } else {
+                    // 選擇圖片浮水印時，顯示欄位，並加上必填屬性
+                    wmImageGroup.classList.remove('hidden');
+                    wmImageInput.setAttribute('required', 'required');
+                }
+            }
+
+            // 頁面載入時先執行一次，以根據預設值調整狀態
+            toggleWatermarkImageInput();
+
+            // 監聽浮水印種類的變化
+            wmTypeSelect.addEventListener('change', toggleWatermarkImageInput);
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>圖像浮水印處理工具 - Flask Web GUI</title>
+    <style>
+        body { 
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+        margin: 0; 
+        padding: 20px; 
+        
+        /* 1. 背景圖片的路徑 */
+        background-image: url('/static/images/25715adfc5e2665c2cae5cddc4af0765.jpg'); 
+        
+        /* 2. 確保背景圖片覆蓋整個視窗 */
+        background-size: cover; 
+        
+        /* 3. 確保背景圖片固定 */
+        background-attachment: fixed; 
+        
+        /* 4. 調整疊加層透明度：0.5 alpha (半透明黑色) */
+        background-color: rgba(0, 0, 0, 0.5); 
+        
+        /* 5. 混合模式保持不變 */
+        background-blend-mode: overlay; 
+        }
+        
+        .container { 
+        max-width: 800px; 
+        margin: 30px auto; 
+        
+        /* 使用 rgba() 設置半透明白色背景 */
+        background: rgba(255, 255, 255, 0.7); /* 提高不透明度，讓文字更清晰 */
+        
+        padding: 30px; 
+        border-radius: 12px; 
+        box-shadow: 0 4px 20px rgba(0,0,0,0.08); 
+        }
+
+        h1 { text-align: center; color: #1a1a1a; margin-bottom: 25px; border-bottom: 2px solid #0523a5; padding-bottom: 10px; }
+        h2 { color: #333; margin-top: 25px; border-left: 5px solid #0523a5; padding-left: 10px; }
+        .form-group { margin-bottom: 18px; }
+        label { display: block; font-weight: 600; margin-bottom: 6px; color: #444; }
+        input[type="file"], input[type="text"], select { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; transition: border-color 0.3s; }
+        input[type="file"]:focus, input[type="text"]:focus, select:focus { border-color: #0523a5; outline: none; }
+        .options-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; }
+        button { background-color: #0523a5; color: white; padding: 12px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold; width: 100%; transition: background-color 0.3s; margin-top: 20px;}
+        button:hover { background-color: #0056b3; }
+        
+        /* 訊息樣式 */
+        .flashes { list-style: none; padding: 0; margin: 0 0 20px 0; }
+        .flashes li { padding: 12px; border-radius: 6px; font-weight: 600; }
+        .error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb;}
+
+        /* 新增 CSS 來顯示/隱藏浮水印圖片欄位 */
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📸 圖像浮水印處理工具</h1>
+        
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            <ul class="flashes">
+            {% for category, message in messages %}
+              <li class="{{ category }}">{{ message }}</li>
+            {% endfor %}
+            </ul>
+          {% endif %}
+        {% endwith %}
+
+        <form method="POST" enctype="multipart/form-data" action="{{ url_for('index') }}">
+            
+            <h2>📁 檔案與文字輸入</h2>
+            
+            <div class="form-group">
+                <label for="main_image">主圖 (.jpg/.png):</label>
+                <input type="file" id="main_image" name="main_image" accept=".jpg, .jpeg, .png" required>
+            </div>
+            
+            <div id="watermark_image_group" class="form-group">
+                <label for="watermark_image">浮水印圖 (.jpg/.png):</label>
+                <input type="file" id="watermark_image" name="watermark_image" accept=".jpg, .jpeg, .png" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="user_text">浮水印文字 (僅限「文字浮水印」模式使用):</label>
+                <input type="text" id="user_text" name="user_text" placeholder="輸入浮水印文字內容">
+            </div>
+
+            <h2>⚙️ 浮水印操作選項</h2>
+            <div class="options-grid">
+                <div class="form-group">
+                    <label for="wm_type">種類選擇:</label>
+                    <select id="wm_type" name="wm_type">
+                        <option value="浮雕去背">透明浮雕</option>
+                        <option value="透明彩色">彩色混合</option>
+                        <option value="文字浮水印">文字浮水印</option> </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="wm_size">大小選擇:</label>
+                    <select id="wm_size" name="wm_size">
+                        <option value="小">小 (約主圖寬度 10%)</option>
+                        <option value="中" selected>中 (約主圖寬度 20%)</option>
+                        <option value="大">大 (約主圖寬度 30%)</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="wm_position">添加位置:</label>
+                    <select id="wm_position" name="wm_position">
+                        <option value="左上角">左上角</option>
+                        <option value="右上角">右上角</option>
+                        <option value="左下角">左下角</option>
+                        <option value="右下角" selected>右下角</option>
+                        <option value="中央">中央</option>
+                    </select>
+                </div>
+            </div>
+
+            <button type="submit"> 產生圖片</button>
+        </form>
+    </div>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const wmTypeSelect = document.getElementById('wm_type');
+            const wmImageGroup = document.getElementById('watermark_image_group');
+            const wmImageInput = document.getElementById('watermark_image');
+
+            function toggleWatermarkImageInput() {
+                if (wmTypeSelect.value === '文字浮水印') {
+                    // 選擇文字浮水印時，隱藏圖片輸入欄位，並移除必填屬性
+                    wmImageGroup.classList.add('hidden');
+                    wmImageInput.removeAttribute('required');
+                } else {
+                    // 選擇圖片浮水印時，顯示欄位，並加上必填屬性
+                    wmImageGroup.classList.remove('hidden');
+                    wmImageInput.setAttribute('required', 'required');
+                }
+            }
+
+            // 頁面載入時先執行一次，以根據預設值調整狀態
+            toggleWatermarkImageInput();
+
+            // 監聽浮水印種類的變化
+            wmTypeSelect.addEventListener('change', toggleWatermarkImageInput);
+        });
+    </script>
+</body>
+</html>
